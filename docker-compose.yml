@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  mongodb:
+    container_name: mongodb
+    image: mongo:latest
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpassword
+    ports:
+      - 27017:27017
+    networks:
+      - app-network
+    volumes:
+      - mongodb_data_container:/data/db
+
+  cml-payment-api:
+    container_name: cml-payment-api
+    build:
+      context: .
+      target: development
+    volumes:
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
+    ports:
+      - 3000:3000
+    command: npm run start:dev
+    networks:
+      - app-network
+    depends_on:
+      - mongodb
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  mongodb_data_container:
+

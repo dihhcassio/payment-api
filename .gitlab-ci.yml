@@ -1,0 +1,69 @@
+# Gitlab CI/CD criado por Tácio Andrade
+# Esse .gitlab-ci.yml executa os seguintes processos:
+# build = Criação da imagem do docker e sobe para o repositório do gitlab
+# test = Ainda em criação
+# deploy = Faz o login via ssh no servidor e sobe a aplicação
+
+stages:
+  - build
+#  - test
+  - deploy
+
+before_script:
+    - apk add openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+
+# Cria a imagem docker de produção e sobe para o repository
+build:
+  image: docker:19.03.12
+  only:
+    - master
+  stage: build
+  services:
+    - docker:19.03.12-dind
+# Variável caso queira gerar uma versão específica da aplicação para futuro roolback fácil
+  variables:
+    CONTAINER_IMAGE: registry.gitlab.com/$CI_PROJECT_PATH
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$ENV_PROD" > .env
+    - docker build -t $CONTAINER_IMAGE:latest .
+    - docker push $CONTAINER_IMAGE:latest
+
+# Cria a imagem docker de desenvolvimento e sobe para o repository
+build-dev:
+  image: docker:19.03.12
+  only:
+    - homologacao
+  stage: build
+  services:
+    - docker:19.03.12-dind
+# Variável caso queira gerar uma versão específica da aplicação para futuro roolback fácil
+  variables:
+    CONTAINER_IMAGE: registry.gitlab.com/$CI_PROJECT_PATH
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$ENV_HOMOLOG" > .env
+    - docker build -t $CONTAINER_IMAGE:dev .
+    - docker push $CONTAINER_IMAGE:dev
+
+# Faz deploy da aplicação em produção
+deploy:
+  stage: deploy
+  image: alpine
+  only:
+    - master
+  script:
+    - ssh -o StrictHostKeyChecking=no tacio@ftp.glorexpremios.com "docker rm cml-payment-api -f && docker rmi registry.gitlab.com/$CI_PROJECT_PATH:latest -f && docker run --name cml-payment-api --restart unless-stopped -d -p 3339:3000 registry.gitlab.com/$CI_PROJECT_PATH:latest"
+
+# Faz deploy da aplicação em homologação
+deploy-dev:
+  stage: deploy
+  image: alpine
+  only:
+    - homologacao
+  script:
+    - ssh -o StrictHostKeyChecking=no tacio@ftp.glorexpremios.com "docker rm cml-payment-api-dev -f && docker rmi registry.gitlab.com/$CI_PROJECT_PATH:dev -f && docker run --name cml-payment-api-dev --restart unless-stopped -d -p 3340:3000 registry.gitlab.com/$CI_PROJECT_PATH:dev"
